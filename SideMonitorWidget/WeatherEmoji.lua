@@ -4,7 +4,7 @@ function Update()
   local cond = condMeasure:GetStringValue()
   cond = extract_weather_keyword(cond)
   -- SKIN:Bang('!Log', 'Weather condition: ' .. cond)
-  if cond == 'DAYNIGHT' then
+  if cond == 'DAYNIGHT' or cond == 'DAY' or cond == 'NIGHT' then
     local isNight = SKIN:GetMeasure('MeasureIsNight'):GetValue()
     if isNight == 1 then return 'NIGHT' end
     return 'DAY'
@@ -13,7 +13,7 @@ function Update()
 end
 
 function extract_weather_keyword(s)
-  local keywords = {"THUNDER","RAIN","SNOW","ICE","FOG","CLOUD","PARTLY","DAY","NIGHT"}
+  local keywords = {"THUNDER","RAIN","SNOW","ICE","FOG","CLOUD","PARTLY","DAYNIGHT","DAY","NIGHT"}
   for _, kw in ipairs(keywords) do
     if s:find(kw, 1, true) then
       return kw
