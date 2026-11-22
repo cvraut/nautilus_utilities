@@ -8,8 +8,11 @@
 --     are set, so the status argument is trustworthy.)
 --   * Failure walks LOCATIONS in order. If every town fails, the most recent
 --     cached record keeps being displayed and we wait for the next poll.
---   * Every successful poll is appended to CACHE_FILE (last MAX_RECORDS kept),
---     so a restart without internet still shows the last good data.
+--   * A successful poll appends one line to CACHE_FILE only when the values
+--     (town/temp/high/low/condition) differ from the last line written, so the
+--     file is never rewritten and unchanged polls cost no disk writes. All
+--     history is kept. A restart without internet shows the last good data;
+--     its "Updated X min ago" then counts from when those values last changed.
 --   * Display values are pushed to skin variables WxTemp/WxHigh/WxLow/WxCond/
 --     WxStatus/CurrentObsSource, which the meters read.
 
@@ -28,13 +31,13 @@ local URL_TEMPLATE = "https://forecast.weather.gov/MapClick.php?lat=%s&lon=%s&un
 local PARENT_MEASURE = "MeasureNWSCurrentObs"
 local POLL_SECONDS = 15 * 60       -- one full poll (with fallbacks) every 15 minutes
 local STUCK_SECONDS = 5 * 60       -- give up on a fallback chain that never reports back
-local MAX_RECORDS = 100
 local CACHE_FILE = (os.getenv('APPDATA') or '.') .. '\\Rainmeter\\SideMonitorWidget_weather.csv'
 
 local currentIndex = 1
 local chainActive = false   -- true while a poll is walking the fallback towns
 local lastAttempt = 0       -- os.time() when the current/last poll started
 local lastRecord = nil      -- { time, town, temp, high, low, cond }
+local lastWritten = nil     -- last record written to CACHE_FILE
 
 function Log(msg)
     if DEBUG then
@@ -67,19 +70,23 @@ local function Clean(s)
     return (tostring(s or ''):gsub('[,\r\n]', ' '))
 end
 
+local function SameValues(a, b)
+    return a ~= nil and b ~= nil and Clean(a.town) == Clean(b.town) and Clean(a.temp) == Clean(b.temp)
+        and Clean(a.high) == Clean(b.high) and Clean(a.low) == Clean(b.low) and Clean(a.cond) == Clean(b.cond)
+end
+
 local function AppendRecord(rec)
-    local lines = ReadCacheLines()
-    table.insert(lines, table.concat({
-        tostring(rec.time), Clean(rec.town), Clean(rec.temp),
-        Clean(rec.high), Clean(rec.low), Clean(rec.cond) }, ','))
-    while #lines > MAX_RECORDS do table.remove(lines, 1) end
-    local f = io.open(CACHE_FILE, 'w')
+    if SameValues(rec, lastWritten) then return end   -- nothing changed: no disk write
+    local f = io.open(CACHE_FILE, 'a')
     if f == nil then
         Log('could not write cache file ' .. CACHE_FILE)
         return
     end
-    f:write(table.concat(lines, '\n'), '\n')
+    f:write(table.concat({
+        tostring(rec.time), Clean(rec.town), Clean(rec.temp),
+        Clean(rec.high), Clean(rec.low), Clean(rec.cond) }, ','), '\n')
     f:close()
+    lastWritten = rec
 end
 
 -- ---------------------------------------------------------------------------
@@ -134,6 +141,9 @@ local function StartPoll()
     chainActive = true
     lastAttempt = os.time()
     FetchFrom(1)
+    -- Habit data (GitHub contributions) refreshes on the same 15-minute tick, so
+    -- weather and habits are always from the same poll. Both also fetch on load.
+    SKIN:Bang('!CommandMeasure', 'MeasureGitHubContrib', 'Update')
 end
 
 local function EndPoll()
@@ -157,6 +167,7 @@ function Initialize()
     local lines = ReadCacheLines()
     if #lines > 0 then
         lastRecord = ParseRecord(lines[#lines])
+        lastWritten = lastRecord
     end
     -- The WebParser measure fetches on its own when the skin loads; that is the
     -- startup poll, so treat it as an active chain starting now.
