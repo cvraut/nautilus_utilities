@@ -188,7 +188,8 @@ class ChatDB:
                     id,
                     title,
                     updated,
-                    token_count
+                    token_count,
+                    context
 
                 FROM conversations
 
