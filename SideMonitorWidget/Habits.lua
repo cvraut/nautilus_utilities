@@ -92,9 +92,7 @@ local function Cap(s) return s:sub(1, 1):upper() .. s:sub(2) end
 -- turns white with a dark shadow (variables read by the label/flame meters).
 local function SetFlame(name, hot)
     SKIN:Bang('!SetVariable', name .. 'FlameHidden', hot and '0' or '1')
-    SKIN:Bang('!SetVariable', name .. 'LabelColor', hot and '255,255,255,255' or SKIN:GetVariable('ColorBlue'))
-    SKIN:Bang('!SetVariable', name .. 'LabelFx', hot and 'Shadow' or 'None')
-end
+    SKIN:Bang('!SetVariable', name .. 'LabelColor', hot and '255,255,255,255' or SKIN:GetVariable('ColorBlue'))end
 
 local function Draw(s)
     local name = Cap(s)
