@@ -12,12 +12,14 @@
 -- SKIPS: daily counts you type into your own published Google Sheet (CSV). Same
 --   15-minute fetch; rows sharing a date are summed; blank/missing days count as 0.
 -- WORDS: net words added across your tracked docs. A Google Apps Script counts the
---   cloud-reachable files hourly and publishes a "name,words,updated" CSV; the
---   widget fetches it on the 15-min tick, keeps each file's total history in its
---   own DB, and each day's value is the sum over currently-tracked files of
---   (today's total - the previous total). New files baseline at 0; a file dropped
---   from the sheet drops out of the whole line. Rows with a blank count (local
---   files the script can't reach) are ignored for now.
+--   cloud-reachable files hourly and publishes a "file_id,words,updated" CSV, where
+--   file_id = base64 of the doc link/path (so the published feed isn't plaintext-
+--   indexable). The widget uses file_id as the per-file key (it'll decode it only
+--   when local-file counting needs the real path). It fetches on the 15-min tick,
+--   keeps each file's total history in its own DB, and each day's value is the sum
+--   over currently-tracked files of (today's total - the previous total). New files
+--   baseline at 0; a file dropped from the sheet drops out of the whole line. Rows
+--   with a blank count (local files the script can't reach) are ignored for now.
 --
 -- Charts: shared x-axis of 11 points (-10 days .. today). Each series is rescaled
 -- on its own: the lowest of its 11 values sits in the bottom bin and the highest
