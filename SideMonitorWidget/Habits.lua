@@ -127,12 +127,33 @@ local function Draw(s)
     SKIN:Bang('!SetVariable', name .. 'DotA', '255')
     SKIN:Bang('!SetVariable', name .. 'LineA', '255')
     SKIN:Bang('!SetVariable', name .. 'Value', tostring(vals[DAYS]))
-    SetFlame(name, vals[DAYS] > vals[DAYS - 1])
+    local hot = vals[DAYS] > vals[DAYS - 1]
+    SetFlame(name, hot)
+    return hot
+end
+
+-- Sub animation mood from how many habits are lit (sheets from Make-SubStates.ps1;
+-- 2 lit keeps the original animation). Frame counts must match the sheets.
+local SUB_MOODS = {
+    [0] = { '@Resources\\sub_sleep.png', 5 },
+    [1] = { '@Resources\\sub_slow.png', 10 },
+    [2] = { 'side_monitor_animation.png', 5 },
+    [3] = { '@Resources\\sub_zoom.png', 5 },
+}
+
+local function SetSubMood(lit)
+    local mood = SUB_MOODS[math.min(lit, 3)]
+    SKIN:Bang('!SetVariable', 'SubImage', SKIN:GetVariable('CURRENTPATH') .. mood[1])
+    SKIN:Bang('!SetVariable', 'SubFrames', tostring(mood[2]))
 end
 
 local function DrawAll()
     if ComputeWords then ComputeWords() end
-    for _, s in ipairs(SERIES) do Draw(s) end
+    local lit = 0
+    for _, s in ipairs(SERIES) do
+        if Draw(s) then lit = lit + 1 end
+    end
+    SetSubMood(lit)
     lastDrawnDay = Today()
     SKIN:Bang('!UpdateMeterGroup', 'Habits')
     SKIN:Bang('!Redraw')
