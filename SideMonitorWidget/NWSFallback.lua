@@ -145,6 +145,7 @@ local function StartPoll()
     -- weather and habits are always from the same poll. Both also fetch on load.
     SKIN:Bang('!CommandMeasure', 'MeasureGitHubContrib', 'Update')
     SKIN:Bang('!CommandMeasure', 'MeasureSkipsSheet', 'Update')
+    SKIN:Bang('!CommandMeasure', 'MeasureWordsCounts', 'Update')
 end
 
 local function EndPoll()

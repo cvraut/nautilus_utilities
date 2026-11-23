@@ -11,7 +11,13 @@
 --   triggers it), so weather and habit data always come from the same tick.
 -- SKIPS: daily counts you type into your own published Google Sheet (CSV). Same
 --   15-minute fetch; rows sharing a date are summed; blank/missing days count as 0.
--- WORDS: not wired up yet; its row shows "--" and a flat baseline.
+-- WORDS: net words added across your tracked docs. A Google Apps Script counts the
+--   cloud-reachable files hourly and publishes a "name,words,updated" CSV; the
+--   widget fetches it on the 15-min tick, keeps each file's total history in its
+--   own DB, and each day's value is the sum over currently-tracked files of
+--   (today's total - the previous total). New files baseline at 0; a file dropped
+--   from the sheet drops out of the whole line. Rows with a blank count (local
+--   files the script can't reach) are ignored for now.
 --
 -- Charts: shared x-axis of 11 points (-10 days .. today). Each series is rescaled
 -- on its own: the lowest of its 11 values sits in the bottom bin and the highest
@@ -19,13 +25,20 @@
 
 local DATA_FILE = (os.getenv('APPDATA') or '.') .. '\\Rainmeter\\SideMonitorWidget_habits.csv'
 local SERIES = { 'commits', 'skips', 'words' }
-local LIVE = { commits = true, skips = true }   -- series that have a data source
+local LIVE = { commits = true, skips = true, words = true }   -- series with a data source
 local DAYS = 11                      -- -10 .. today
 local BINS = 10
 -- Plot area inside the chart meters in Widget.ini: x 0..225, y 3 (top bin)..25 (bottom bin)
 local CHART_W, Y_TOP, Y_BOTTOM = 225, 3, 25
 local data = {}                      -- data[series][date] = value
 local lastDrawnDay = ''
+
+-- WORDS keeps per-file total history separately so it can recompute net words and
+-- cleanly drop files that leave the tracking sheet.
+local WORDS_FILE = (os.getenv('APPDATA') or '.') .. '\\Rainmeter\\SideMonitorWidget_words.csv'
+local wordsTotals = {}   -- wordsTotals[name] = { {date=, total=}, ... } chronological
+local wordsTracked = {}  -- set of file names in the latest counts fetch
+local ComputeWords       -- forward decl; defined in the WORDS section below
 
 local function Today(offsetDays)
     local t = os.date('*t')
@@ -108,6 +121,7 @@ local function Draw(s)
 end
 
 local function DrawAll()
+    if ComputeWords then ComputeWords() end
     for _, s in ipairs(SERIES) do Draw(s) end
     lastDrawnDay = Today()
     SKIN:Bang('!UpdateMeterGroup', 'Habits')
@@ -152,11 +166,92 @@ local function ParseSkipsCsv(text)
 end
 
 -- ---------------------------------------------------------------------------
+-- Words (per-file totals from the published counts CSV: name,words,updated)
+-- ---------------------------------------------------------------------------
+
+local function LoadWords()
+    wordsTotals = {}
+    local f = io.open(WORDS_FILE, 'r')
+    if f == nil then return end
+    for line in f:lines() do
+        local d, name, total = line:match('^(%d%d%d%d%-%d%d%-%d%d),(.-),(%-?%d+)$')
+        if d then
+            wordsTotals[name] = wordsTotals[name] or {}
+            table.insert(wordsTotals[name], { date = d, total = tonumber(total) })
+        end
+    end
+    f:close()
+end
+
+local function LastTotal(name)
+    local h = wordsTotals[name]
+    if h and #h > 0 then return h[#h].total end
+    return nil
+end
+
+-- append today's total for a file only when it differs from the last recorded one
+local function RecordWordsTotal(name, total, date)
+    if LastTotal(name) == total then return end
+    wordsTotals[name] = wordsTotals[name] or {}
+    table.insert(wordsTotals[name], { date = date, total = total })
+    local f = io.open(WORDS_FILE, 'a')
+    if f then
+        f:write(date .. ',' .. (name:gsub('[,\r\n]', ' ')) .. ',' .. total .. '\n')
+        f:close()
+    end
+end
+
+-- most recent recorded total for a file on or before the given date (carry-forward)
+local function TotalOnOrBefore(name, date)
+    local h = wordsTotals[name]
+    if not h then return nil end
+    local best = nil
+    for _, r in ipairs(h) do
+        if r.date <= date then best = r.total else break end
+    end
+    return best
+end
+
+ComputeWords = function()
+    data['words'] = data['words'] or {}
+    for i = 1, DAYS do
+        local day = Today(DAYS - i)
+        local prevDay = Today(DAYS - i + 1)   -- calendar day before `day`
+        local net = 0
+        for name in pairs(wordsTracked) do
+            local cur = TotalOnOrBefore(name, day)
+            if cur ~= nil then
+                local prev = TotalOnOrBefore(name, prevDay)
+                if prev == nil then prev = cur end   -- first appearance: baseline, delta 0
+                net = net + (cur - prev)
+            end
+        end
+        data['words'][day] = net
+    end
+end
+
+local function ParseWordsCounts(text)
+    local today = Today()
+    local tracked, any = {}, false
+    for line in (text .. '\n'):gmatch('([^\r\n]*)[\r\n]') do
+        local name, words = line:match('^(.-),(%-?%d+),')      -- name,words,updated
+        if name == nil then name, words = line:match('^(.-),(%-?%d+)%s*$') end
+        if name and name ~= '' and name ~= 'name' then
+            tracked[name] = true; any = true
+            RecordWordsTotal(name, tonumber(words), today)
+        end
+    end
+    return tracked, any
+end
+
+-- ---------------------------------------------------------------------------
 -- Rainmeter entry points
 -- ---------------------------------------------------------------------------
 
 function Initialize()
     Load()
+    LoadWords()
+    for name in pairs(wordsTotals) do wordsTracked[name] = true end  -- cached set until first fetch
     DrawAll()
 end
 
@@ -184,5 +279,16 @@ function SkipsFetched(status)
     local changes = ParseSkipsCsv(m and m:GetStringValue() or '')
     if #changes == 0 then return end   -- empty/unreachable: keep old data
     Record(changes)
+    DrawAll()
+end
+
+-- status: 'ok' from FinishAction, 'fail' from the error actions (keep old data)
+function WordsFetched(status)
+    if status ~= 'ok' then return end
+    SKIN:Bang('!UpdateMeasure', 'MeasureWordsCountsText')
+    local m = SKIN:GetMeasure('MeasureWordsCountsText')
+    local tracked, any = ParseWordsCounts(m and m:GetStringValue() or '')
+    if not any then return end        -- empty/unreachable: keep old data
+    wordsTracked = tracked
     DrawAll()
 end
