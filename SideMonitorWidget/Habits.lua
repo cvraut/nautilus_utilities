@@ -88,9 +88,18 @@ end
 
 local function Cap(s) return s:sub(1, 1):upper() .. s:sub(2) end
 
+-- "On fire" when today beats yesterday: flame image behind the label, label text
+-- turns white with a dark shadow (variables read by the label/flame meters).
+local function SetFlame(name, hot)
+    SKIN:Bang('!SetVariable', name .. 'FlameHidden', hot and '0' or '1')
+    SKIN:Bang('!SetVariable', name .. 'LabelColor', hot and '255,255,255,255' or SKIN:GetVariable('ColorBlue'))
+    SKIN:Bang('!SetVariable', name .. 'LabelFx', hot and 'Shadow' or 'None')
+end
+
 local function Draw(s)
     local name = Cap(s)
     if not LIVE[s] then
+        SetFlame(name, false)
         SKIN:Bang('!SetVariable', name .. 'Path', '0,' .. Y_BOTTOM .. ' | LineTo ' .. CHART_W .. ',' .. Y_BOTTOM)
         SKIN:Bang('!SetVariable', name .. 'DotA', '0')
         SKIN:Bang('!SetVariable', name .. 'LineA', '0')   -- no data source: baseline only
@@ -120,6 +129,7 @@ local function Draw(s)
     SKIN:Bang('!SetVariable', name .. 'DotA', '255')
     SKIN:Bang('!SetVariable', name .. 'LineA', '255')
     SKIN:Bang('!SetVariable', name .. 'Value', tostring(vals[DAYS]))
+    SetFlame(name, vals[DAYS] > vals[DAYS - 1])
 end
 
 local function DrawAll()
