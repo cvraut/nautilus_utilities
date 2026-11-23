@@ -144,6 +144,7 @@ local function StartPoll()
     -- Habit data (GitHub contributions) refreshes on the same 15-minute tick, so
     -- weather and habits are always from the same poll. Both also fetch on load.
     SKIN:Bang('!CommandMeasure', 'MeasureGitHubContrib', 'Update')
+    SKIN:Bang('!CommandMeasure', 'MeasureSkipsSheet', 'Update')
 end
 
 local function EndPoll()

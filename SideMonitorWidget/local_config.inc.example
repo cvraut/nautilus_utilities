@@ -1,0 +1,5 @@
+; Template for local_config.inc (which is git-ignored).
+; Copy this file to local_config.inc and paste your own published Google Sheet
+; CSV link (File > Share > Publish to web > pick the tab > CSV).
+[Variables]
+SkipsSheetUrl=PASTE_YOUR_PUBLISHED_SHEET_CSV_URL_HERE

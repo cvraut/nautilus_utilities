@@ -219,3 +219,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Side monitor widget: local-only secrets (published sheet URL)
+SideMonitorWidget/local_config.inc

@@ -9,7 +9,9 @@
 --   calendar includes past days, so history is backfilled on the first fetch.
 --   Fetched on skin load and then on every 15-minute weather poll (NWSFallback.lua
 --   triggers it), so weather and habit data always come from the same tick.
--- SKIPS / WORDS: not wired up yet; their rows show "--" and a flat baseline.
+-- SKIPS: daily counts you type into your own published Google Sheet (CSV). Same
+--   15-minute fetch; rows sharing a date are summed; blank/missing days count as 0.
+-- WORDS: not wired up yet; its row shows "--" and a flat baseline.
 --
 -- Charts: shared x-axis of 11 points (-10 days .. today). Each series is rescaled
 -- on its own: the lowest of its 11 values sits in the bottom bin and the highest
@@ -17,7 +19,7 @@
 
 local DATA_FILE = (os.getenv('APPDATA') or '.') .. '\\Rainmeter\\SideMonitorWidget_habits.csv'
 local SERIES = { 'commits', 'skips', 'words' }
-local LIVE = { commits = true }      -- series that have a data source so far
+local LIVE = { commits = true, skips = true }   -- series that have a data source
 local DAYS = 11                      -- -10 .. today
 local BINS = 10
 -- Plot area inside the chart meters in Widget.ini: x 0..225, y 3 (top bin)..25 (bottom bin)
@@ -132,6 +134,24 @@ local function ParseContributions(html)
 end
 
 -- ---------------------------------------------------------------------------
+-- Skips (your published Google Sheet CSV: header + "YYYY-MM-DD,count" rows)
+-- ---------------------------------------------------------------------------
+
+local function ParseSkipsCsv(text)
+    local sums, order = {}, {}
+    for line in (text .. '\n'):gmatch('([^\r\n]*)[\r\n]') do
+        local d, v = line:match('^(%d%d%d%d%-%d%d%-%d%d)%s*,%s*(%d*)')
+        if d then
+            if sums[d] == nil then order[#order + 1] = d end
+            sums[d] = (sums[d] or 0) + (tonumber(v) or 0)   -- blank cell = 0
+        end
+    end
+    local changes = {}
+    for _, d in ipairs(order) do changes[#changes + 1] = { d, 'skips', sums[d] } end
+    return changes
+end
+
+-- ---------------------------------------------------------------------------
 -- Rainmeter entry points
 -- ---------------------------------------------------------------------------
 
@@ -152,6 +172,17 @@ function CommitsFetched(status)
     local m = SKIN:GetMeasure('MeasureGitHubContribText')
     local changes = ParseContributions(m and m:GetStringValue() or '')
     if #changes == 0 then return end   -- page format changed or empty: keep old data
+    Record(changes)
+    DrawAll()
+end
+
+-- status: 'ok' from FinishAction, 'fail' from the error actions (keep old data)
+function SkipsFetched(status)
+    if status ~= 'ok' then return end
+    SKIN:Bang('!UpdateMeasure', 'MeasureSkipsSheetText')
+    local m = SKIN:GetMeasure('MeasureSkipsSheetText')
+    local changes = ParseSkipsCsv(m and m:GetStringValue() or '')
+    if #changes == 0 then return end   -- empty/unreachable: keep old data
     Record(changes)
     DrawAll()
 end
